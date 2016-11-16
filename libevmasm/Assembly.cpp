@@ -56,20 +56,17 @@ void Assembly::append(Assembly const& _a)
 	for (auto const& lib: _a.m_libraries)
 		m_libraries.insert(lib);
 
-	assert(!_a.m_baseDeposit);
-	assert(!_a.m_totalDeposit);
+	assertThrow(!_a.m_baseDeposit, InvalidDeposit, "");
+	assertThrow(!_a.m_totalDeposit, InvalidDeposit, "");
 }
 
 void Assembly::append(Assembly const& _a, int _deposit)
 {
-	if (_deposit > _a.m_deposit)
-		BOOST_THROW_EXCEPTION(InvalidDeposit());
-	else
-	{
-		append(_a);
-		while (_deposit++ < _a.m_deposit)
-			append(Instruction::POP);
-	}
+	assertThrow(_deposit <= _a.m_deposit, InvalidDeposit, "");
+
+	append(_a);
+	while (_deposit++ < _a.m_deposit)
+		append(Instruction::POP);
 }
 
 unsigned Assembly::bytesRequired(unsigned subTagSize) const
