@@ -363,6 +363,33 @@ void TypeChecker::checkLibraryRequirements(ContractDefinition const& _contract)
 			m_errorReporter.typeError(var->location(), "Library cannot have non-constant state variables");
 }
 
+void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
+{
+	TupleType const& lhs = *dynamic_cast<TupleType const*>(&type(_assignment.leftHandSide()));
+	TupleType const& rhs = *dynamic_cast<TupleType const*>(&type(_assignment.rightHandSide()));
+
+	solAssert(lhs.components().size() == rhs.components().size(), "");
+	size_t storageToStorageCopies = 0;
+	size_t toStorageCopies = 0;
+	for (size_t i = 0; i < lhs.components().size(); ++i)
+	{
+		ReferenceType const* ref = dynamic_cast<ReferenceType const*>(lhs.components()[i].get());
+		if (!ref || !ref->dataStoredIn(DataLocation::Storage) || ref->isPointer())
+			continue;
+		toStorageCopies++;
+		if (rhs.components()[i]->dataStoredIn(DataLocation::Storage))
+			storageToStorageCopies++;
+	}
+	if (storageToStorageCopies >= 1 && toStorageCopies >= 2)
+		m_errorReporter.warning(
+			_assignment.location(),
+			"This assignment performs two copies to storage. Since storage copies do not first "
+			"copy to a temporary location, one of them might be overwritten before the second "
+			"is executed and thus may have unexpected effects. It is safer to perform the copies "
+			"separately or assign to storage pointers first."
+		);
+}
+
 void TypeChecker::endVisit(InheritanceSpecifier const& _inheritance)
 {
 	auto base = dynamic_cast<ContractDefinition const*>(&dereference(_inheritance.name()));
@@ -1026,6 +1053,8 @@ bool TypeChecker::visit(Assignment const& _assignment)
 		// Sequenced assignments of tuples is not valid, make the result a "void" type.
 		_assignment.annotation().type = make_shared<TupleType>();
 		expectType(_assignment.rightHandSide(), *tupleType);
+
+		checkDoubleStorageAssignment(_assignment, *tupleType, type(_assignment.rightHandSide()));
 	}
 	else if (t->category() == Type::Category::Mapping)
 	{
